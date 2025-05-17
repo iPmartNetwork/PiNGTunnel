@@ -240,6 +240,31 @@ setup_iran_tunnel() {
   echo -e "${LGREEN}${EMOJI_OK} Iran tunnel is running!${NC}"
 }
 
+show_logs() {
+  echo -e "${LYELLOW}--- Last 30 lines of pingtunnel log ---${NC}"
+  journalctl -u pingtunnel -n 30 --no-pager
+  echo -e "${LYELLOW}---------------------------------------${NC}"
+  read -p "Press Enter to continue..."
+}
+
+test_connectivity() {
+  if [[ -f "$SVC_FILE" ]]; then
+    REMOTE_IP=$(grep -o '\-s [^:]*' "$SVC_FILE" | awk '{print $2}')
+    REMOTE_PORT=$(grep -o '\-s [^ ]*' "$SVC_FILE" | awk -F: '{print $2}')
+    if [[ -n "$REMOTE_IP" && -n "$REMOTE_PORT" ]]; then
+      echo -e "${LCYAN}Testing ICMP (ping) to $REMOTE_IP...${NC}"
+      ping -c 4 "$REMOTE_IP"
+      echo -e "${LCYAN}Testing TCP port $REMOTE_PORT...${NC}"
+      nc -zv "$REMOTE_IP" "$REMOTE_PORT"
+    else
+      echo -e "${LRED}Remote IP or port not found in service config.${NC}"
+    fi
+  else
+    echo -e "${LRED}Service not configured.${NC}"
+  fi
+  read -p "Press Enter to continue..."
+}
+
 tunnel_menu() {
   while true; do
     echo -e "${LBLUE}${BOLD}\n==== Tunnel Manager ${EMOJI_TUNNEL} ====${NC}"
@@ -247,6 +272,8 @@ tunnel_menu() {
     echo -e "${LGREEN}2) Create Iran Tunnel ${EMOJI_IRAN}${NC}"
     echo -e "${LRED}3) Remove Tunnel ${EMOJI_DELETE}${NC}"
     echo -e "${LCYAN}4) Restart Tunnel ${EMOJI_RESTART}${NC}"
+    echo -e "${LPURPLE}5) Show Tunnel Logs 📝${NC}"
+    echo -e "${LPURPLE}6) Test Connectivity 🔎${NC}"
     echo -e "${LPURPLE}0) Back ${EMOJI_BACK}${NC}"
     read -p "$(echo -e ${EMOJI_INPUT}${BOLD} Choose an option:${NC} ) " opt
     case $opt in
@@ -254,6 +281,8 @@ tunnel_menu() {
       2) setup_iran_tunnel ;;
       3) remove_service ;;
       4) restart_service ;;
+      5) show_logs ;;
+      6) test_connectivity ;;
       0) break ;;
       *) echo -e "${LRED}Invalid option.${NC}";;
     esac

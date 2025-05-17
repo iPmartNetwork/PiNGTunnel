@@ -40,14 +40,10 @@ PINGTUNNEL_BIN="/usr/local/bin/pingtunnel"
 SVC_FILE="/etc/systemd/system/pingtunnel.service"
 RELEASE_URL="https://github.com/iPmartNetwork/pingtunnel/releases/latest"
 
-# ---------- Status UI Functions ----------
-# Check pingtunnel version
 core_status() {
   if [[ -f "$PINGTUNNEL_BIN" ]]; then
     VERSION=$("$PINGTUNNEL_BIN" -v 2>/dev/null | head -n1)
-    if [[ -z "$VERSION" ]]; then
-      VERSION="Unknown"
-    fi
+    [[ -z "$VERSION" ]] && VERSION="Unknown"
     echo -e "${LGREEN}${EMOJI_OK} PiNGTunnel Installed${NC}"
     echo -e "${LBLUE}   Version: ${LYELLOW}$VERSION${NC}"
   else
@@ -55,46 +51,78 @@ core_status() {
   fi
 }
 
-# Check service and tunnel status
 tunnel_status() {
+  local found_KHAREJ=0
+  local found_iran=0
+  local active=0
   if [[ ! -f "$SVC_FILE" ]]; then
-    echo -e "${GRAY}${EMOJI_NONE} Tunnel Service Not Configured${NC}"
+    # No service configured
+    echo -e "${LPURPLE}${BOLD}╔══════════════════════════╗${NC}"
+    echo -e "${LPURPLE}${BOLD}║   KHAREJ Tunnel Status   ║${NC}"
+    echo -e "${LPURPLE}${BOLD}╚══════════════════════════╝${NC}"
+    echo -e "${GRAY}${EMOJI_NONE} Not Configured${NC}"
+    echo -e "${LCYAN}${BOLD}╔════════════════════════╗${NC}"
+    echo -e "${LCYAN}${BOLD}║   Iran Tunnel Status   ║${NC}"
+    echo -e "${LCYAN}${BOLD}╚════════════════════════╝${NC}"
+    echo -e "${GRAY}${EMOJI_NONE} Not Configured${NC}"
     return
   fi
-  systemctl is-active --quiet pingtunnel
-  if [[ $? -eq 0 ]]; then
-    STATUS="${LGREEN}${EMOJI_RUNNING} Running${NC}"
-  else
-    STATUS="${LRED}${EMOJI_STOP} Stopped${NC}"
-  fi
 
-  # Try to guess tunnel type & port from systemd file
-  local TYPE=""
-  local PORT=""
-  local REMOTE=""
   CMD=$(grep '^ExecStart=' "$SVC_FILE" | sed 's/ExecStart=//')
+  systemctl is-active --quiet pingtunnel
+  [[ $? -eq 0 ]] && active=1 || active=0
+
+  # KHAREJ Tunnel
   if echo "$CMD" | grep -q " -type s "; then
+    found_KHAREJ=1
     TYPE="${EMOJI_KHAREJ} KHAREJ"
     PORT=$(echo "$CMD" | grep -o '\-l :[0-9]*' | cut -d: -f2)
     [[ -z "$PORT" ]] && PORT="?"
     REMOTE=$(echo "$CMD" | grep -o '\-r [^ ]*' | awk '{print $2}')
     [[ -z "$REMOTE" ]] && REMOTE="?"
-    echo -e "${LCYAN}${TYPE}${NC} ${EMOJI_PORT} Port: ${LYELLOW}${PORT}${NC} ${EMOJI_RUNNING} $STATUS"
-  elif echo "$CMD" | grep -q " -type c "; then
+    if [[ $active -eq 1 ]]; then
+      STATUS="${LGREEN}🟢 Running${NC} ${GRAY}🔴 Stopped${NC}"
+    else
+      STATUS="${GRAY}🟢 Running${NC} ${LRED}🔴 Stopped${NC}"
+    fi
+    echo -e "${LPURPLE}${BOLD}╔══════════════════════════╗${NC}"
+    echo -e "${LPURPLE}${BOLD}║   KHAREJ Tunnel Status   ║${NC}"
+    echo -e "${LPURPLE}${BOLD}╚══════════════════════════╝${NC}"
+    echo -e "${LCYAN}${TYPE}${NC} ${EMOJI_PORT} Port: ${LYELLOW}${PORT}${NC} ${STATUS}"
+    echo -e "${LCYAN}   → Forward: 127.0.0.1 → ${LYELLOW}${REMOTE}${NC}"
+  else
+    echo -e "${LPURPLE}${BOLD}╔══════════════════════════╗${NC}"
+    echo -e "${LPURPLE}${BOLD}║   KHAREJ Tunnel Status   ║${NC}"
+    echo -e "${LPURPLE}${BOLD}╚══════════════════════════╝${NC}"
+    echo -e "${GRAY}${EMOJI_NONE} Not Configured${NC}"
+  fi
+
+  # Iran Tunnel
+  if echo "$CMD" | grep -q " -type c "; then
+    found_iran=1
     TYPE="${EMOJI_IRAN} Iran"
     PORT=$(echo "$CMD" | grep -o '\-l 127.0.0.1:[0-9]*' | cut -d: -f3)
     [[ -z "$PORT" ]] && PORT="?"
     REMOTE=$(echo "$CMD" | grep -o '\-s [^ ]*' | awk '{print $2}')
     [[ -z "$REMOTE" ]] && REMOTE="?"
-    echo -e "${LPURPLE}${TYPE}${NC} ${EMOJI_PORT} Port: ${LYELLOW}${PORT}${NC} ${EMOJI_RUNNING} $STATUS"
-    echo -e "${LCYAN}  → Connects to KHAREJ: ${LYELLOW}${REMOTE}${NC}"
+    if [[ $active -eq 1 ]]; then
+      STATUS="${LGREEN}🟢 Running${NC} ${GRAY}🔴 Stopped${NC}"
+    else
+      STATUS="${GRAY}🟢 Running${NC} ${LRED}🔴 Stopped${NC}"
+    fi
+    echo -e "${LCYAN}${BOLD}╔════════════════════════╗${NC}"
+    echo -e "${LCYAN}${BOLD}║   Iran Tunnel Status   ║${NC}"
+    echo -e "${LCYAN}${BOLD}╚════════════════════════╝${NC}"
+    echo -e "${LPURPLE}${TYPE}${NC} ${EMOJI_PORT} Port: ${LYELLOW}${PORT}${NC} ${STATUS}"
+    echo -e "${LPURPLE}   → Connects to: ${LYELLOW}${REMOTE}${NC}"
   else
-    echo -e "${GRAY}${EMOJI_NONE} Tunnel Service Configured (Unknown Type) $STATUS${NC}"
+    echo -e "${LCYAN}${BOLD}╔════════════════════════╗${NC}"
+    echo -e "${LCYAN}${BOLD}║   Iran Tunnel Status   ║${NC}"
+    echo -e "${LCYAN}${BOLD}╚════════════════════════╝${NC}"
+    echo -e "${GRAY}${EMOJI_NONE} Not Configured${NC}"
   fi
 }
-# ---------- End UI Functions ----------
 
-# Detect architecture for file selection
 get_arch_file() {
   ARCH=$(uname -m)
   case "$ARCH" in
@@ -114,7 +142,6 @@ install_core() {
 
   TMP_DIR=$(mktemp -d)
   echo -e "${LCYAN}${EMOJI_INSTALL} Downloading PiNGTunnel core for your architecture...${NC}"
-  # Fetch direct download link using GitHub API
   API_URL="https://api.github.com/repos/iPmartNetwork/pingtunnel/releases/latest"
   DL_URL=$(curl -s $API_URL | grep "browser_download_url" | grep "$ZIP_FILE" | head -n1 | cut -d '"' -f 4)
 
@@ -254,7 +281,7 @@ core_menu() {
 show_logo() {
 echo -e "${LPURPLE}${BOLD}"
 echo "╔═════════════════════════════════════════════╗"
-echo "║     ${EMOJI_CORE} WireGuard PiNGTunnel Panel  ${EMOJI_TUNNEL}     ║"
+echo "║     ${EMOJI_CORE} WireGuard PiNGTunnel Panel   ${EMOJI_TUNNEL}     ║"
 echo "╚═════════════════════════════════════════════╝"
 echo -e "${NC}"
 }
@@ -264,9 +291,6 @@ show_status_cards() {
   echo -e "${LPURPLE}${BOLD}║  PiNGTunnel Core Status   ║${NC}"
   echo -e "${LPURPLE}${BOLD}╚═══════════════════════════╝${NC}"
   core_status
-  echo -e "${LCYAN}${BOLD}╔═════════════════════════════╗${NC}"
-  echo -e "${LCYAN}${BOLD}║  Tunnel Status (IRAN/KHAREJ)║${NC}"
-  echo -e "${LCYAN}${BOLD}╚═════════════════════════════╝${NC}"
   tunnel_status
   echo ""
 }

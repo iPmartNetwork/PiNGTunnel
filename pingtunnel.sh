@@ -1,9 +1,8 @@
 #!/bin/bash
 
 # Advanced WireGuard + PiNGTunnel Menu Script 🎨
-# Author: iPmart | https://github.com/esrrhs/pingtunnel
+# Author: iPmart | https://github.com/iPmartNetwork/pingtunnel
 
-# Colors
 NC='\033[0m'
 LBLUE='\033[1;36m'
 LGREEN='\033[1;32m'
@@ -14,7 +13,6 @@ LCYAN='\033[1;96m'
 WHITE='\033[1;37m'
 BOLD='\033[1m'
 
-# Emojis
 EMOJI_CORE="💎"
 EMOJI_TUNNEL="🌐"
 EMOJI_INSTALL="⬇️"
@@ -31,39 +29,67 @@ EMOJI_INPUT="✏️"
 EMOJI_PORT="🔌"
 EMOJI_IP="🌐"
 EMOJI_CONFETTI="🎉"
+EMOJI_UNZIP="📦"
 
 PINGTUNNEL_BIN="/usr/local/bin/pingtunnel"
 SVC_FILE="/etc/systemd/system/pingtunnel.service"
+RELEASE_URL="https://github.com/iPmartNetwork/pingtunnel/releases/latest"
 
-get_arch() {
+# Detect architecture for file selection
+get_arch_file() {
   ARCH=$(uname -m)
   case "$ARCH" in
-    x86_64)  echo "amd64";;
-    aarch64) echo "arm64";;
-    armv7l)  echo "arm";;
-    *) echo "$ARCH";;
+    x86_64)  echo "pingtunnel_linux_amd64.zip";;
+    aarch64) echo "pingtunnel_linux_arm64.zip";;
+    armv7l)  echo "pingtunnel_linux_arm.zip";;
+    *) echo ""; return 1;;
   esac
 }
 
-show_logo() {
-echo -e "${LPURPLE}${BOLD}"
-echo "╔═════════════════════════════════════════════╗"
-echo "║     ${EMOJI_CORE} WireGuard PiNGTunnel Panel ${EMOJI_TUNNEL}     ║"
-echo "╚═════════════════════════════════════════════╝"
-echo -e "${NC}"
-}
-
+# Install core from custom repo with auto-unzip
 install_core() {
-  echo -e "${LCYAN}${EMOJI_INSTALL} Installing PiNGTunnel core...${NC}"
-  ARCH=$(get_arch)
-  PT_URL="https://github.com/esrrhs/pingtunnel/releases/latest/download/pingtunnel_linux_${ARCH}"
-  curl -Lo "$PINGTUNNEL_BIN" "$PT_URL"
+  ZIP_FILE=$(get_arch_file)
+  if [[ -z "$ZIP_FILE" ]]; then
+    echo -e "${LRED}Unsupported architecture!${NC}"
+    return 1
+  fi
+
+  TMP_DIR=$(mktemp -d)
+  echo -e "${LCYAN}${EMOJI_INSTALL} Downloading PiNGTunnel core for your architecture...${NC}"
+  
+  # Fetch direct download link using GitHub API
+  API_URL="https://api.github.com/repos/iPmartNetwork/pingtunnel/releases/latest"
+  DL_URL=$(curl -s $API_URL | grep "browser_download_url" | grep "$ZIP_FILE" | head -n1 | cut -d '"' -f 4)
+  
+  if [[ -z "$DL_URL" ]]; then
+    echo -e "${LRED}${EMOJI_REMOVE} Download link not found for $ZIP_FILE!${NC}"
+    rm -rf "$TMP_DIR"
+    return 1
+  fi
+
+  # Download the zip
+  curl -L --output "$TMP_DIR/$ZIP_FILE" "$DL_URL"
   if [[ $? -ne 0 ]]; then
     echo -e "${LRED}${EMOJI_REMOVE} Download failed!${NC}"
-    return
+    rm -rf "$TMP_DIR"
+    return 1
   fi
+
+  # Unzip
+  echo -e "${LYELLOW}${EMOJI_UNZIP} Unzipping...${NC}"
+  apt-get update >/dev/null 2>&1
+  apt-get install -y unzip >/dev/null 2>&1
+  unzip -o "$TMP_DIR/$ZIP_FILE" -d "$TMP_DIR" >/dev/null
+  if [[ ! -f "$TMP_DIR/pingtunnel" ]]; then
+    echo -e "${LRED}Unzip failed or pingtunnel binary not found!${NC}"
+    rm -rf "$TMP_DIR"
+    return 1
+  fi
+
+  mv "$TMP_DIR/pingtunnel" "$PINGTUNNEL_BIN"
   chmod +x "$PINGTUNNEL_BIN"
-  echo -e "${LGREEN}${EMOJI_OK} PiNGTunnel installed.${NC}"
+  rm -rf "$TMP_DIR"
+  echo -e "${LGREEN}${EMOJI_OK} PiNGTunnel installed successfully!${NC}"
 }
 
 remove_core() {
@@ -170,7 +196,14 @@ core_menu() {
   done
 }
 
-# Main Menu
+show_logo() {
+echo -e "${LPURPLE}${BOLD}"
+echo "╔═════════════════════════════════════════════╗"
+echo "║     ${EMOJI_CORE} WireGuard PiNGTunnel Panel  ${EMOJI_TUNNEL}     ║"
+echo "╚═════════════════════════════════════════════╝"
+echo -e "${NC}"
+}
+
 while true; do
   clear
   show_logo

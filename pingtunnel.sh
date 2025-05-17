@@ -249,15 +249,33 @@ show_logs() {
 
 test_connectivity() {
   if [[ -f "$SVC_FILE" ]]; then
-    REMOTE_IP=$(grep -o '\-s [^:]*' "$SVC_FILE" | awk '{print $2}')
-    REMOTE_PORT=$(grep -o '\-s [^ ]*' "$SVC_FILE" | awk -F: '{print $2}')
-    if [[ -n "$REMOTE_IP" && -n "$REMOTE_PORT" ]]; then
-      echo -e "${LCYAN}Testing ICMP (ping) to $REMOTE_IP...${NC}"
-      ping -c 4 "$REMOTE_IP"
-      echo -e "${LCYAN}Testing TCP port $REMOTE_PORT...${NC}"
-      nc -zv "$REMOTE_IP" "$REMOTE_PORT"
+    CMD=$(grep '^ExecStart=' "$SVC_FILE" | sed 's/ExecStart=//')
+    if echo "$CMD" | grep -q ' -type s '; then
+      # Server mode: ask for Iran IP and test
+      WG_PORT=$(echo "$CMD" | grep -o '\-r 127.0.0.1:[0-9]*' | awk -F: '{print $3}')
+      read -p "Enter Iran server IP to test: " IRAN_IP
+      if [[ -n "$IRAN_IP" && -n "$WG_PORT" ]]; then
+        echo -e "${LCYAN}Testing ICMP (ping) to $IRAN_IP...${NC}"
+        ping -c 4 "$IRAN_IP"
+        echo -e "${LCYAN}Testing TCP port $WG_PORT on $IRAN_IP...${NC}"
+        nc -zv "$IRAN_IP" "$WG_PORT"
+      else
+        echo -e "${LRED}IP or WireGuard port not provided.${NC}"
+      fi
+    elif echo "$CMD" | grep -q ' -type c '; then
+      # Client mode: test remote ICMP and port
+      REMOTE_IP=$(echo "$CMD" | grep -o '\-s [^:]*' | awk '{print $2}')
+      REMOTE_PORT=$(echo "$CMD" | grep -o '\-s [^ ]*' | awk -F: '{print $2}')
+      if [[ -n "$REMOTE_IP" && -n "$REMOTE_PORT" ]]; then
+        echo -e "${LCYAN}Testing ICMP (ping) to $REMOTE_IP...${NC}"
+        ping -c 4 "$REMOTE_IP"
+        echo -e "${LCYAN}Testing TCP port $REMOTE_PORT...${NC}"
+        nc -zv "$REMOTE_IP" "$REMOTE_PORT"
+      else
+        echo -e "${LRED}Remote IP or port not found in service config.${NC}"
+      fi
     else
-      echo -e "${LRED}Remote IP or port not found in service config.${NC}"
+      echo -e "${LRED}Unknown pingtunnel mode in service config.${NC}"
     fi
   else
     echo -e "${LRED}Service not configured.${NC}"

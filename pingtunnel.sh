@@ -12,6 +12,7 @@ LPURPLE='\033[1;35m'
 LCYAN='\033[1;96m'
 WHITE='\033[1;37m'
 BOLD='\033[1m'
+GRAY='\033[1;30m'
 
 EMOJI_CORE="💎"
 EMOJI_TUNNEL="🌐"
@@ -21,7 +22,7 @@ EMOJI_UPDATE="🔄"
 EMOJI_OK="✅"
 EMOJI_SVC="🔄"
 EMOJI_IRAN="🇮🇷"
-EMOJI_ABROAD="🌍"
+EMOJI_KHAREJ="🌍"
 EMOJI_DELETE="🗑️"
 EMOJI_RESTART="🔁"
 EMOJI_BACK="🔙"
@@ -30,10 +31,68 @@ EMOJI_PORT="🔌"
 EMOJI_IP="🌐"
 EMOJI_CONFETTI="🎉"
 EMOJI_UNZIP="📦"
+EMOJI_WARN="⚠️"
+EMOJI_RUNNING="🟢"
+EMOJI_STOP="🔴"
+EMOJI_NONE="⚪"
 
 PINGTUNNEL_BIN="/usr/local/bin/pingtunnel"
 SVC_FILE="/etc/systemd/system/pingtunnel.service"
 RELEASE_URL="https://github.com/iPmartNetwork/pingtunnel/releases/latest"
+
+# ---------- Status UI Functions ----------
+# Check pingtunnel version
+core_status() {
+  if [[ -f "$PINGTUNNEL_BIN" ]]; then
+    VERSION=$("$PINGTUNNEL_BIN" -v 2>/dev/null | head -n1)
+    if [[ -z "$VERSION" ]]; then
+      VERSION="Unknown"
+    fi
+    echo -e "${LGREEN}${EMOJI_OK} PiNGTunnel Installed${NC}"
+    echo -e "${LBLUE}   Version: ${LYELLOW}$VERSION${NC}"
+  else
+    echo -e "${LRED}${EMOJI_REMOVE} PiNGTunnel Not Installed${NC}"
+  fi
+}
+
+# Check service and tunnel status
+tunnel_status() {
+  if [[ ! -f "$SVC_FILE" ]]; then
+    echo -e "${GRAY}${EMOJI_NONE} Tunnel Service Not Configured${NC}"
+    return
+  fi
+  systemctl is-active --quiet pingtunnel
+  if [[ $? -eq 0 ]]; then
+    STATUS="${LGREEN}${EMOJI_RUNNING} Running${NC}"
+  else
+    STATUS="${LRED}${EMOJI_STOP} Stopped${NC}"
+  fi
+
+  # Try to guess tunnel type & port from systemd file
+  local TYPE=""
+  local PORT=""
+  local REMOTE=""
+  CMD=$(grep '^ExecStart=' "$SVC_FILE" | sed 's/ExecStart=//')
+  if echo "$CMD" | grep -q " -type s "; then
+    TYPE="${EMOJI_KHAREJ} KHAREJ"
+    PORT=$(echo "$CMD" | grep -o '\-l :[0-9]*' | cut -d: -f2)
+    [[ -z "$PORT" ]] && PORT="?"
+    REMOTE=$(echo "$CMD" | grep -o '\-r [^ ]*' | awk '{print $2}')
+    [[ -z "$REMOTE" ]] && REMOTE="?"
+    echo -e "${LCYAN}${TYPE}${NC} ${EMOJI_PORT} Port: ${LYELLOW}${PORT}${NC} ${EMOJI_RUNNING} $STATUS"
+  elif echo "$CMD" | grep -q " -type c "; then
+    TYPE="${EMOJI_IRAN} Iran"
+    PORT=$(echo "$CMD" | grep -o '\-l 127.0.0.1:[0-9]*' | cut -d: -f3)
+    [[ -z "$PORT" ]] && PORT="?"
+    REMOTE=$(echo "$CMD" | grep -o '\-s [^ ]*' | awk '{print $2}')
+    [[ -z "$REMOTE" ]] && REMOTE="?"
+    echo -e "${LPURPLE}${TYPE}${NC} ${EMOJI_PORT} Port: ${LYELLOW}${PORT}${NC} ${EMOJI_RUNNING} $STATUS"
+    echo -e "${LCYAN}  → Connects to KHAREJ: ${LYELLOW}${REMOTE}${NC}"
+  else
+    echo -e "${GRAY}${EMOJI_NONE} Tunnel Service Configured (Unknown Type) $STATUS${NC}"
+  fi
+}
+# ---------- End UI Functions ----------
 
 # Detect architecture for file selection
 get_arch_file() {
@@ -46,7 +105,6 @@ get_arch_file() {
   esac
 }
 
-# Install core from custom repo with auto-unzip
 install_core() {
   ZIP_FILE=$(get_arch_file)
   if [[ -z "$ZIP_FILE" ]]; then
@@ -56,18 +114,16 @@ install_core() {
 
   TMP_DIR=$(mktemp -d)
   echo -e "${LCYAN}${EMOJI_INSTALL} Downloading PiNGTunnel core for your architecture...${NC}"
-  
   # Fetch direct download link using GitHub API
   API_URL="https://api.github.com/repos/iPmartNetwork/pingtunnel/releases/latest"
   DL_URL=$(curl -s $API_URL | grep "browser_download_url" | grep "$ZIP_FILE" | head -n1 | cut -d '"' -f 4)
-  
+
   if [[ -z "$DL_URL" ]]; then
     echo -e "${LRED}${EMOJI_REMOVE} Download link not found for $ZIP_FILE!${NC}"
     rm -rf "$TMP_DIR"
     return 1
   fi
 
-  # Download the zip
   curl -L --output "$TMP_DIR/$ZIP_FILE" "$DL_URL"
   if [[ $? -ne 0 ]]; then
     echo -e "${LRED}${EMOJI_REMOVE} Download failed!${NC}"
@@ -75,7 +131,6 @@ install_core() {
     return 1
   fi
 
-  # Unzip
   echo -e "${LYELLOW}${EMOJI_UNZIP} Unzipping...${NC}"
   apt-get update >/dev/null 2>&1
   apt-get install -y unzip >/dev/null 2>&1
@@ -139,17 +194,17 @@ restart_service() {
   echo -e "${LGREEN}${EMOJI_RESTART} Tunnel service restarted.${NC}"
 }
 
-setup_abroad_tunnel() {
+setup_KHAREJ_tunnel() {
   read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter tunnel port [Default: 443]:${NC} ) " TUNNEL_PORT
   TUNNEL_PORT=${TUNNEL_PORT:-443}
   read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter WireGuard port [e.g. 51820]:${NC} ) " WG_PORT
   PT_CMD="$PINGTUNNEL_BIN -type s -l :$TUNNEL_PORT -r 127.0.0.1:$WG_PORT"
   create_service "$PT_CMD"
-  echo -e "${LGREEN}${EMOJI_OK} Abroad tunnel is running!${NC}"
+  echo -e "${LGREEN}${EMOJI_OK} KHAREJ tunnel is running!${NC}"
 }
 
 setup_iran_tunnel() {
-  read -p "$(echo -e ${EMOJI_IP}${BOLD} Enter abroad server IP:${NC} ) " SERVER_IP
+  read -p "$(echo -e ${EMOJI_IP}${BOLD} Enter KHAREJ server IP:${NC} ) " SERVER_IP
   read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter tunnel port [Default: 443]:${NC} ) " TUNNEL_PORT
   TUNNEL_PORT=${TUNNEL_PORT:-443}
   read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter WireGuard port [e.g. 51820]:${NC} ) " WG_PORT
@@ -161,14 +216,14 @@ setup_iran_tunnel() {
 tunnel_menu() {
   while true; do
     echo -e "${LBLUE}${BOLD}\n==== Tunnel Manager ${EMOJI_TUNNEL} ====${NC}"
-    echo -e "${LYELLOW}1) Create Abroad Tunnel ${EMOJI_ABROAD}${NC}"
+    echo -e "${LYELLOW}1) Create KHAREJ Tunnel ${EMOJI_KHAREJ}${NC}"
     echo -e "${LGREEN}2) Create Iran Tunnel ${EMOJI_IRAN}${NC}"
     echo -e "${LRED}3) Remove Tunnel ${EMOJI_DELETE}${NC}"
     echo -e "${LCYAN}4) Restart Tunnel ${EMOJI_RESTART}${NC}"
     echo -e "${LPURPLE}0) Back ${EMOJI_BACK}${NC}"
     read -p "$(echo -e ${EMOJI_INPUT}${BOLD} Choose an option:${NC} ) " opt
     case $opt in
-      1) setup_abroad_tunnel ;;
+      1) setup_KHAREJ_tunnel ;;
       2) setup_iran_tunnel ;;
       3) remove_service ;;
       4) restart_service ;;
@@ -204,9 +259,22 @@ echo "╚═══════════════════════�
 echo -e "${NC}"
 }
 
+show_status_cards() {
+  echo -e "${LPURPLE}${BOLD}╔═══════════════════════════╗${NC}"
+  echo -e "${LPURPLE}${BOLD}║  PiNGTunnel Core Status   ║${NC}"
+  echo -e "${LPURPLE}${BOLD}╚═══════════════════════════╝${NC}"
+  core_status
+  echo -e "${LCYAN}${BOLD}╔═════════════════════════════╗${NC}"
+  echo -e "${LCYAN}${BOLD}║  Tunnel Status (IRAN/KHAREJ)║${NC}"
+  echo -e "${LCYAN}${BOLD}╚═════════════════════════════╝${NC}"
+  tunnel_status
+  echo ""
+}
+
 while true; do
   clear
   show_logo
+  show_status_cards
   echo -e "${LBLUE}${BOLD}Main Menu${NC}"
   echo -e "${LYELLOW}1) Core Manager ${EMOJI_CORE}${NC}"
   echo -e "${LGREEN}2) Tunnel Manager ${EMOJI_TUNNEL}${NC}"

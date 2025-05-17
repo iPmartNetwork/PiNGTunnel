@@ -253,26 +253,27 @@ test_connectivity() {
     if echo "$CMD" | grep -q ' -type s '; then
       # Server mode: ask for Iran IP and test
       WG_PORT=$(echo "$CMD" | grep -o '\-r 127.0.0.1:[0-9]*' | awk -F: '{print $3}')
-      read -p "Enter Iran server IP to test: " IRAN_IP
-      if [[ -n "$IRAN_IP" && -n "$WG_PORT" ]]; then
-        echo -e "${LCYAN}Testing ICMP (ping) to $IRAN_IP...${NC}"
-        ping -c 4 "$IRAN_IP"
-        echo -e "${LCYAN}Testing TCP port $WG_PORT on $IRAN_IP...${NC}"
-        nc -zv "$IRAN_IP" "$WG_PORT"
+      read -p "Enter Iran server IP to test: " TEST_IP
+      if [[ -n "$TEST_IP" && -n "$WG_PORT" ]]; then
+        echo -e "${LCYAN}Testing ICMP (ping) to $TEST_IP...${NC}"
+        ping -c 4 "$TEST_IP"
+        echo -e "${LCYAN}Testing TCP port $WG_PORT on $TEST_IP...${NC}"
+        nc -zv "$TEST_IP" "$WG_PORT"
       else
         echo -e "${LRED}IP or WireGuard port not provided.${NC}"
       fi
     elif echo "$CMD" | grep -q ' -type c '; then
-      # Client mode: test remote ICMP and port
-      REMOTE_IP=$(echo "$CMD" | grep -o '\-s [^:]*' | awk '{print $2}')
-      REMOTE_PORT=$(echo "$CMD" | grep -o '\-s [^ ]*' | awk -F: '{print $2}')
-      if [[ -n "$REMOTE_IP" && -n "$REMOTE_PORT" ]]; then
-        echo -e "${LCYAN}Testing ICMP (ping) to $REMOTE_IP...${NC}"
-        ping -c 4 "$REMOTE_IP"
-        echo -e "${LCYAN}Testing TCP port $REMOTE_PORT...${NC}"
-        nc -zv "$REMOTE_IP" "$REMOTE_PORT"
+      # Client mode: ask for KHAREJ IP and test
+      WG_PORT=$(echo "$CMD" | grep -o '\-l 127.0.0.1:[0-9]*' | awk -F: '{print $3}')
+      read -p "Enter KHAREJ (outside) server IP to test: " TEST_IP
+      TUNNEL_PORT=$(echo "$CMD" | grep -o '\-s [^ ]*' | awk -F: '{print $2}')
+      if [[ -n "$TEST_IP" && -n "$TUNNEL_PORT" ]]; then
+        echo -e "${LCYAN}Testing ICMP (ping) to $TEST_IP...${NC}"
+        ping -c 4 "$TEST_IP"
+        echo -e "${LCYAN}Testing TCP port $TUNNEL_PORT on $TEST_IP...${NC}"
+        nc -zv "$TEST_IP" "$TUNNEL_PORT"
       else
-        echo -e "${LRED}Remote IP or port not found in service config.${NC}"
+        echo -e "${LRED}IP or tunnel port not provided.${NC}"
       fi
     else
       echo -e "${LRED}Unknown pingtunnel mode in service config.${NC}"

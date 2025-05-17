@@ -1,361 +1,167 @@
 #!/bin/bash
 
-# Advanced WireGuard + PiNGTunnel Menu Script 🎨
-# Author: iPmart | https://github.com/iPmartNetwork/pingtunnel
+# ----------- COLOR CODES -----------
+GREEN="\033[0;32m"
+YELLOW="\033[1;33m"
+NC="\033[0m"
 
-NC='\033[0m'
-LBLUE='\033[1;36m'
-LGREEN='\033[1;32m'
-LYELLOW='\033[1;33m'
-LRED='\033[1;31m'
-LPURPLE='\033[1;35m'
-LCYAN='\033[1;96m'
-WHITE='\033[1;37m'
-BOLD='\033[1m'
-GRAY='\033[1;30m'
-
-EMOJI_CORE="💎"
-EMOJI_TUNNEL="🌐"
-EMOJI_INSTALL="⬇️"
-EMOJI_REMOVE="❌"
-EMOJI_UPDATE="🔄"
-EMOJI_OK="✅"
-EMOJI_SVC="🔄"
-EMOJI_IRAN="🇮🇷"
-EMOJI_KHAREJ="🌍"
-EMOJI_DELETE="🗑️"
-EMOJI_RESTART="🔁"
-EMOJI_BACK="🔙"
-EMOJI_INPUT="✏️"
-EMOJI_PORT="🔌"
-EMOJI_IP="🌐"
-EMOJI_CONFETTI="🎉"
-EMOJI_UNZIP="📦"
-EMOJI_WARN="⚠️"
-EMOJI_RUNNING="🟢"
-EMOJI_STOP="🔴"
-EMOJI_NONE="⚪"
-
-PINGTUNNEL_BIN="/usr/local/bin/pingtunnel"
-SVC_FILE="/etc/systemd/system/pingtunnel.service"
-RELEASE_URL="https://github.com/iPmartNetwork/pingtunnel/releases/latest"
-
-core_status() {
-  if [[ -f "$PINGTUNNEL_BIN" ]]; then
-    VERSION=$("$PINGTUNNEL_BIN" -v 2>/dev/null | head -n1)
-    [[ -z "$VERSION" ]] && VERSION="Unknown"
-    echo -e "${LGREEN}${EMOJI_OK} PiNGTunnel Installed${NC}"
-    echo -e "${LBLUE}   Version: ${LYELLOW}$VERSION${NC}"
-  else
-    echo -e "${LRED}${EMOJI_REMOVE} PiNGTunnel Not Installed${NC}"
-  fi
+function print_banner() {
+    echo -e "${GREEN}"
+    echo "╔══════════════════════════════════════════════════════╗"
+    echo "║   pingtunnel (esrrhs) Auto-Build & Network Tuner    ║"
+    echo "╚══════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
 }
 
-tunnel_status() {
-  local found_KHAREJ=0
-  local found_iran=0
-  local active=0
-  if [[ ! -f "$SVC_FILE" ]]; then
-    # No service configured
-    echo -e "${LPURPLE}${BOLD}╔══════════════════════════╗${NC}"
-    echo -e "${LPURPLE}${BOLD}║   KHAREJ Tunnel Status   ║${NC}"
-    echo -e "${LPURPLE}${BOLD}╚══════════════════════════╝${NC}"
-    echo -e "${GRAY}${EMOJI_NONE} Not Configured${NC}"
-    echo -e "${LCYAN}${BOLD}╔════════════════════════╗${NC}"
-    echo -e "${LCYAN}${BOLD}║   Iran Tunnel Status   ║${NC}"
-    echo -e "${LCYAN}${BOLD}╚════════════════════════╝${NC}"
-    echo -e "${GRAY}${EMOJI_NONE} Not Configured${NC}"
-    return
-  fi
-
-  CMD=$(grep '^ExecStart=' "$SVC_FILE" | sed 's/ExecStart=//')
-  systemctl is-active --quiet pingtunnel
-  [[ $? -eq 0 ]] && active=1 || active=0
-
-  # KHAREJ Tunnel
-  if echo "$CMD" | grep -q " -type s "; then
-    found_KHAREJ=1
-    TYPE="${EMOJI_KHAREJ} KHAREJ"
-    PORT=$(echo "$CMD" | grep -o '\-l :[0-9]*' | cut -d: -f2)
-    [[ -z "$PORT" ]] && PORT="?"
-    REMOTE=$(echo "$CMD" | grep -o '\-r [^ ]*' | awk '{print $2}')
-    [[ -z "$REMOTE" ]] && REMOTE="?"
-    if [[ $active -eq 1 ]]; then
-      STATUS="${LGREEN}🟢 Running${NC} ${GRAY}🔴 Stopped${NC}"
-    else
-      STATUS="${GRAY}🟢 Running${NC} ${LRED}🔴 Stopped${NC}"
+function install_deps() {
+    echo -e "${YELLOW}Installing build dependencies...${NC}"
+    apt update -y
+    apt install -y git curl wget build-essential ethtool
+    if ! command -v go &>/dev/null; then
+        wget https://go.dev/dl/go1.22.3.linux-amd64.tar.gz
+        rm -rf /usr/local/go
+        tar -C /usr/local -xzf go1.22.3.linux-amd64.tar.gz
+        echo 'export PATH=$PATH:/usr/local/go/bin' >> /etc/profile
+        export PATH=$PATH:/usr/local/go/bin
     fi
-    echo -e "${LPURPLE}${BOLD}╔══════════════════════════╗${NC}"
-    echo -e "${LPURPLE}${BOLD}║   KHAREJ Tunnel Status   ║${NC}"
-    echo -e "${LPURPLE}${BOLD}╚══════════════════════════╝${NC}"
-    echo -e "${LCYAN}${TYPE}${NC} ${EMOJI_PORT} Port: ${LYELLOW}${PORT}${NC} ${STATUS}"
-    echo -e "${LCYAN}   → Forward: 127.0.0.1 → ${LYELLOW}${REMOTE}${NC}"
-  else
-    echo -e "${LPURPLE}${BOLD}╔══════════════════════════╗${NC}"
-    echo -e "${LPURPLE}${BOLD}║   KHAREJ Tunnel Status   ║${NC}"
-    echo -e "${LPURPLE}${BOLD}╚══════════════════════════╝${NC}"
-    echo -e "${GRAY}${EMOJI_NONE} Not Configured${NC}"
-  fi
+    source /etc/profile
+}
 
-  # Iran Tunnel
-  if echo "$CMD" | grep -q " -type c "; then
-    found_iran=1
-    TYPE="${EMOJI_IRAN} Iran"
-    PORT=$(echo "$CMD" | grep -o '\-l 127.0.0.1:[0-9]*' | cut -d: -f3)
-    [[ -z "$PORT" ]] && PORT="?"
-    REMOTE=$(echo "$CMD" | grep -o '\-s [^ ]*' | awk '{print $2}')
-    [[ -z "$REMOTE" ]] && REMOTE="?"
-    if [[ $active -eq 1 ]]; then
-      STATUS="${LGREEN}🟢 Running${NC} ${GRAY}🔴 Stopped${NC}"
-    else
-      STATUS="${GRAY}🟢 Running${NC} ${LRED}🔴 Stopped${NC}"
+function build_pingtunnel() {
+    echo -e "${YELLOW}Cloning and building latest esrrhs/pingtunnel from GitHub...${NC}"
+    rm -rf /opt/pingtunnel
+    git clone https://github.com/esrrhs/pingtunnel.git /opt/pingtunnel
+    cd /opt/pingtunnel
+    go build -o /usr/local/bin/pingtunnel .
+    chmod +x /usr/local/bin/pingtunnel
+    cd ~
+}
+
+function optimize_network() {
+    echo -e "${YELLOW}Applying advanced network optimizations...${NC}"
+    modprobe tcp_bbr
+    if ! grep -q "tcp_bbr" /etc/modules-load.d/modules.conf 2>/dev/null; then
+        echo "tcp_bbr" >> /etc/modules-load.d/modules.conf
     fi
-    echo -e "${LCYAN}${BOLD}╔════════════════════════╗${NC}"
-    echo -e "${LCYAN}${BOLD}║   Iran Tunnel Status   ║${NC}"
-    echo -e "${LCYAN}${BOLD}╚════════════════════════╝${NC}"
-    echo -e "${LPURPLE}${TYPE}${NC} ${EMOJI_PORT} Port: ${LYELLOW}${PORT}${NC} ${STATUS}"
-    echo -e "${LPURPLE}   → Connects to: ${LYELLOW}${REMOTE}${NC}"
-  else
-    echo -e "${LCYAN}${BOLD}╔════════════════════════╗${NC}"
-    echo -e "${LCYAN}${BOLD}║   Iran Tunnel Status   ║${NC}"
-    echo -e "${LCYAN}${BOLD}╚════════════════════════╝${NC}"
-    echo -e "${GRAY}${EMOJI_NONE} Not Configured${NC}"
-  fi
+
+    cat << EOF > /etc/sysctl.d/99-pingtunnel-opt.conf
+net.core.default_qdisc = fq
+net.ipv4.tcp_congestion_control = bbr
+net.core.rmem_max = 134217728
+net.core.wmem_max = 134217728
+net.ipv4.tcp_rmem = 4096 87380 134217728
+net.ipv4.tcp_wmem = 4096 65536 134217728
+net.ipv4.udp_rmem_min = 16384
+net.ipv4.udp_wmem_min = 16384
+net.core.optmem_max = 25165824
+net.ipv4.tcp_low_latency = 1
+net.ipv4.tcp_fastopen = 3
+net.ipv4.tcp_window_scaling = 1
+net.ipv4.tcp_ecn = 1
+net.core.netdev_max_backlog = 250000
+net.ipv4.tcp_max_syn_backlog = 8192
+net.ipv4.tcp_sack = 1
+net.ipv4.tcp_timestamps = 1
+net.ipv4.udp_mem = 65536 131072 262144
+net.ipv4.ip_local_port_range = 1024 65535
+net.ipv4.tcp_fin_timeout = 10
+net.ipv4.conf.all.rp_filter = 0
+net.ipv4.conf.default.rp_filter = 0
+fs.file-max = 1048576
+EOF
+
+    sysctl --system
+
+    # Ulimit
+    ulimit -n 1048576
+    if ! grep -q "1048576" /etc/security/limits.conf; then
+        echo "* soft nofile 1048576" >> /etc/security/limits.conf
+        echo "* hard nofile 1048576" >> /etc/security/limits.conf
+    fi
+
+    echo -e "${YELLOW}Setting MTU to 1300 on all interfaces...${NC}"
+    for iface in $(ls /sys/class/net/ | grep -v lo); do
+        ip link set dev $iface mtu 1300 2>/dev/null
+        ethtool -K $iface gro off gso off tso off 2>/dev/null
+        ethtool -C $iface rx-usecs 16 tx-usecs 16 adaptive-rx on adaptive-tx on 2>/dev/null
+    done
 }
 
-get_arch_file() {
-  ARCH=$(uname -m)
-  case "$ARCH" in
-    x86_64)  echo "pingtunnel_linux_amd64.zip";;
-    aarch64) echo "pingtunnel_linux_arm64.zip";;
-    armv7l)  echo "pingtunnel_linux_arm.zip";;
-    *) echo ""; return 1;;
-  esac
+function setup_ntp() {
+    echo -e "${YELLOW}Syncing system time with NTP...${NC}"
+    timedatectl set-ntp true
 }
 
-install_core() {
-  ZIP_FILE=$(get_arch_file)
-  if [[ -z "$ZIP_FILE" ]]; then
-    echo -e "${LRED}Unsupported architecture!${NC}"
-    return 1
-  fi
+function create_systemd_service() {
+    ROLE=$1
+    PORT=$2
+    REMOTE_IP=$3
+    REMOTE_PORT=$4
+    MTU=$5
 
-  TMP_DIR=$(mktemp -d)
-  echo -e "${LCYAN}${EMOJI_INSTALL} Downloading PiNGTunnel core for your architecture...${NC}"
-  API_URL="https://api.github.com/repos/iPmartNetwork/pingtunnel/releases/latest"
-  DL_URL=$(curl -s $API_URL | grep "browser_download_url" | grep "$ZIP_FILE" | head -n1 | cut -d '"' -f 4)
-
-  if [[ -z "$DL_URL" ]]; then
-    echo -e "${LRED}${EMOJI_REMOVE} Download link not found for $ZIP_FILE!${NC}"
-    rm -rf "$TMP_DIR"
-    return 1
-  fi
-
-  curl -L --output "$TMP_DIR/$ZIP_FILE" "$DL_URL"
-  if [[ $? -ne 0 ]]; then
-    echo -e "${LRED}${EMOJI_REMOVE} Download failed!${NC}"
-    rm -rf "$TMP_DIR"
-    return 1
-  fi
-
-  echo -e "${LYELLOW}${EMOJI_UNZIP} Unzipping...${NC}"
-  apt-get update >/dev/null 2>&1
-  apt-get install -y unzip >/dev/null 2>&1
-  unzip -o "$TMP_DIR/$ZIP_FILE" -d "$TMP_DIR" >/dev/null
-  if [[ ! -f "$TMP_DIR/pingtunnel" ]]; then
-    echo -e "${LRED}Unzip failed or pingtunnel binary not found!${NC}"
-    rm -rf "$TMP_DIR"
-    return 1
-  fi
-
-  mv "$TMP_DIR/pingtunnel" "$PINGTUNNEL_BIN"
-  chmod +x "$PINGTUNNEL_BIN"
-  rm -rf "$TMP_DIR"
-  echo -e "${LGREEN}${EMOJI_OK} PiNGTunnel installed successfully!${NC}"
-}
-
-remove_core() {
-  if [[ -f "$PINGTUNNEL_BIN" ]]; then
-    rm -f "$PINGTUNNEL_BIN"
-    echo -e "${LRED}${EMOJI_REMOVE} PiNGTunnel removed.${NC}"
-  else
-    echo -e "${LYELLOW}PiNGTunnel not found.${NC}"
-  fi
-}
-
-update_core() {
-  remove_core
-  install_core
-  echo -e "${LGREEN}${EMOJI_UPDATE} PiNGTunnel updated!${NC}"
-}
-
-create_service() {
-  cat > "$SVC_FILE" <<EOF
+    if [[ $ROLE == "server" ]]; then
+        cat << EOF > /etc/systemd/system/pingtunnel.service
 [Unit]
-Description=PiNGTunnel Service
+Description=pingtunnel Server (ICMP Tunnel)
 After=network.target
 
 [Service]
-Type=simple
+ExecStart=/usr/local/bin/pingtunnel -type server -l :${PORT} -key secret123 -mtu ${MTU}
 Restart=always
-ExecStart=$1
 
 [Install]
 WantedBy=multi-user.target
 EOF
-  systemctl daemon-reload
-  systemctl enable pingtunnel
-  systemctl restart pingtunnel
-}
-
-remove_service() {
-  systemctl stop pingtunnel 2>/dev/null
-  systemctl disable pingtunnel 2>/dev/null
-  rm -f "$SVC_FILE"
-  systemctl daemon-reload
-  echo -e "${LRED}${EMOJI_DELETE} Tunnel service removed.${NC}"
-}
-
-restart_service() {
-  systemctl restart pingtunnel
-  echo -e "${LGREEN}${EMOJI_RESTART} Tunnel service restarted.${NC}"
-}
-
-setup_KHAREJ_tunnel() {
-  read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter tunnel port [Default: 443]:${NC} ) " TUNNEL_PORT
-  TUNNEL_PORT=${TUNNEL_PORT:-443}
-  read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter WireGuard port [e.g. 51820]:${NC} ) " WG_PORT
-  PT_CMD="$PINGTUNNEL_BIN -type s -l :$TUNNEL_PORT -r 127.0.0.1:$WG_PORT"
-  create_service "$PT_CMD"
-  echo -e "${LGREEN}${EMOJI_OK} KHAREJ tunnel is running!${NC}"
-}
-
-setup_iran_tunnel() {
-  read -p "$(echo -e ${EMOJI_IP}${BOLD} Enter KHAREJ server IP:${NC} ) " SERVER_IP
-  read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter tunnel port [Default: 443]:${NC} ) " TUNNEL_PORT
-  TUNNEL_PORT=${TUNNEL_PORT:-443}
-  read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter WireGuard port [e.g. 51820]:${NC} ) " WG_PORT
-  PT_CMD="$PINGTUNNEL_BIN -type c -l 127.0.0.1:$WG_PORT -s $SERVER_IP:$TUNNEL_PORT"
-  create_service "$PT_CMD"
-  echo -e "${LGREEN}${EMOJI_OK} Iran tunnel is running!${NC}"
-}
-
-show_logs() {
-  echo -e "${LYELLOW}--- Last 30 lines of pingtunnel log ---${NC}"
-  journalctl -u pingtunnel -n 30 --no-pager
-  echo -e "${LYELLOW}---------------------------------------${NC}"
-  read -p "Press Enter to continue..."
-}
-
-test_connectivity() {
-  if [[ -f "$SVC_FILE" ]]; then
-    CMD=$(grep '^ExecStart=' "$SVC_FILE" | sed 's/ExecStart=//')
-    if echo "$CMD" | grep -q ' -type s '; then
-      # Server mode: ask for Iran IP and test
-      WG_PORT=$(echo "$CMD" | grep -o '\-r 127.0.0.1:[0-9]*' | awk -F: '{print $3}')
-      read -p "Enter Iran server IP to test: " TEST_IP
-      if [[ -n "$TEST_IP" && -n "$WG_PORT" ]]; then
-        echo -e "${LCYAN}Testing ICMP (ping) to $TEST_IP...${NC}"
-        ping -c 4 "$TEST_IP"
-        echo -e "${LCYAN}Testing TCP port $WG_PORT on $TEST_IP...${NC}"
-        nc -zv "$TEST_IP" "$WG_PORT"
-      else
-        echo -e "${LRED}IP or WireGuard port not provided.${NC}"
-      fi
-    elif echo "$CMD" | grep -q ' -type c '; then
-      # Client mode: ask for KHAREJ IP and test
-      WG_PORT=$(echo "$CMD" | grep -o '\-l 127.0.0.1:[0-9]*' | awk -F: '{print $3}')
-      read -p "Enter KHAREJ (outside) server IP to test: " TEST_IP
-      TUNNEL_PORT=$(echo "$CMD" | grep -o '\-s [^ ]*' | awk -F: '{print $2}')
-      if [[ -n "$TEST_IP" && -n "$TUNNEL_PORT" ]]; then
-        echo -e "${LCYAN}Testing ICMP (ping) to $TEST_IP...${NC}"
-        ping -c 4 "$TEST_IP"
-        echo -e "${LCYAN}Testing TCP port $TUNNEL_PORT on $TEST_IP...${NC}"
-        nc -zv "$TEST_IP" "$TUNNEL_PORT"
-      else
-        echo -e "${LRED}IP or tunnel port not provided.${NC}"
-      fi
     else
-      echo -e "${LRED}Unknown pingtunnel mode in service config.${NC}"
+        cat << EOF > /etc/systemd/system/pingtunnel.service
+[Unit]
+Description=pingtunnel Client (ICMP Tunnel)
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/pingtunnel -type client -l 127.0.0.1:1080 -s ${REMOTE_IP}:${REMOTE_PORT} -key secret123 -mtu ${MTU}
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+EOF
     fi
-  else
-    echo -e "${LRED}Service not configured.${NC}"
-  fi
-  read -p "Press Enter to continue..."
+
+    systemctl daemon-reload
+    systemctl enable pingtunnel
+    systemctl restart pingtunnel
 }
 
-tunnel_menu() {
-  while true; do
-    echo -e "${LBLUE}${BOLD}\n==== Tunnel Manager ${EMOJI_TUNNEL} ====${NC}"
-    echo -e "${LYELLOW}1) Create KHAREJ Tunnel ${EMOJI_KHAREJ}${NC}"
-    echo -e "${LGREEN}2) Create Iran Tunnel ${EMOJI_IRAN}${NC}"
-    echo -e "${LRED}3) Remove Tunnel ${EMOJI_DELETE}${NC}"
-    echo -e "${LCYAN}4) Restart Tunnel ${EMOJI_RESTART}${NC}"
-    echo -e "${LPURPLE}5) Show Tunnel Logs 📝${NC}"
-    echo -e "${LPURPLE}6) Test Connectivity 🔎${NC}"
-    echo -e "${LPURPLE}0) Back ${EMOJI_BACK}${NC}"
-    read -p "$(echo -e ${EMOJI_INPUT}${BOLD} Choose an option:${NC} ) " opt
-    case $opt in
-      1) setup_KHAREJ_tunnel ;;
-      2) setup_iran_tunnel ;;
-      3) remove_service ;;
-      4) restart_service ;;
-      5) show_logs ;;
-      6) test_connectivity ;;
-      0) break ;;
-      *) echo -e "${LRED}Invalid option.${NC}";;
-    esac
-  done
-}
+# ------------- MAIN SCRIPT --------------
 
-core_menu() {
-  while true; do
-    echo -e "${LYELLOW}${BOLD}\n==== Core Manager ${EMOJI_CORE} ====${NC}"
-    echo -e "${LGREEN}1) Install PiNGTunnel ${EMOJI_INSTALL}${NC}"
-    echo -e "${LRED}2) Remove PiNGTunnel ${EMOJI_REMOVE}${NC}"
-    echo -e "${LCYAN}3) Update PiNGTunnel ${EMOJI_UPDATE}${NC}"
-    echo -e "${LPURPLE}0) Back ${EMOJI_BACK}${NC}"
-    read -p "$(echo -e ${EMOJI_INPUT}${BOLD} Choose an option:${NC} ) " opt
-    case $opt in
-      1) install_core ;;
-      2) remove_core ;;
-      3) update_core ;;
-      0) break ;;
-      *) echo -e "${LRED}Invalid option.${NC}";;
-    esac
-  done
-}
+print_banner
+install_deps
+build_pingtunnel
+optimize_network
+setup_ntp
 
-show_logo() {
-echo -e "${LPURPLE}${BOLD}"
-echo "╔═════════════════════════════════════════════╗"
-echo "║     ${EMOJI_CORE} WireGuard PiNGTunnel Panel   ${EMOJI_TUNNEL}     ║"
-echo "╚═════════════════════════════════════════════╝"
-echo -e "${NC}"
-}
+echo -e "${YELLOW}Do you want to run as (1) Server or (2) Client? [1/2]: ${NC}"
+read ROLESEL
+if [[ $ROLESEL == "1" ]]; then
+    ROLE="server"
+    read -p "Enter listen port for ICMP tunnel (default 8080): " PORT
+    PORT=${PORT:-8080}
+    MTU="1200"
+    create_systemd_service $ROLE $PORT "" "" $MTU
+    echo -e "${GREEN}pingtunnel Server running on port $PORT with MTU $MTU (ICMP)${NC}"
+    echo -e "${GREEN}SOCKS5 proxy will NOT be available on server; only tunnel endpoint!${NC}"
+else
+    ROLE="client"
+    read -p "Enter remote server IP: " REMOTE_IP
+    read -p "Enter remote server port (default 8080): " REMOTE_PORT
+    REMOTE_PORT=${REMOTE_PORT:-8080}
+    MTU="1200"
+    create_systemd_service $ROLE "" $REMOTE_IP $REMOTE_PORT $MTU
+    echo -e "${GREEN}pingtunnel Client running; SOCKS5 proxy at 127.0.0.1:1080${NC}"
+    echo -e "${GREEN}Connect your applications to 127.0.0.1:1080 for tunneling.${NC}"
+fi
 
-show_status_cards() {
-  echo -e "${LPURPLE}${BOLD}╔═══════════════════════════╗${NC}"
-  echo -e "${LPURPLE}${BOLD}║  PiNGTunnel Core Status   ║${NC}"
-  echo -e "${LPURPLE}${BOLD}╚═══════════════════════════╝${NC}"
-  core_status
-  tunnel_status
-  echo ""
-}
+echo -e "${YELLOW}Status:${NC}"
+systemctl status pingtunnel --no-pager
 
-while true; do
-  clear
-  show_logo
-  show_status_cards
-  echo -e "${LBLUE}${BOLD}Main Menu${NC}"
-  echo -e "${LYELLOW}1) Core Manager ${EMOJI_CORE}${NC}"
-  echo -e "${LGREEN}2) Tunnel Manager ${EMOJI_TUNNEL}${NC}"
-  echo -e "${LRED}0) Exit ${EMOJI_CONFETTI}${NC}"
-  read -p "$(echo -e ${EMOJI_INPUT}${BOLD} Choose an option:${NC} ) " opt
-  case $opt in
-    1) core_menu ;;
-    2) tunnel_menu ;;
-    0) echo -e "${LGREEN}Goodbye!${NC}"; exit 0 ;;
-    *) echo -e "${LRED}Invalid option.${NC}"; sleep 1 ;;
-  esac
-done
+echo -e "${GREEN}All done! Please reboot your system for maximum effect.${NC}"

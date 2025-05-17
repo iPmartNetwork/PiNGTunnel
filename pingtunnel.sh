@@ -221,69 +221,72 @@ restart_service() {
   echo -e "${LGREEN}${EMOJI_RESTART} Tunnel service restarted.${NC}"
 }
 
+# گرفتن ورودی غیرخالی
+ask_nonempty() {
+  local prompt=$1
+  local var
+  while true; do
+    read -p "$(echo -e "$prompt")" var
+    if [[ -n "$var" ]]; then
+      echo "$var"
+      return
+    fi
+    echo -e "${LRED}Value can't be empty!${NC}"
+  done
+}
+
 setup_KHAREJ_tunnel() {
-  read -p "$(echo -e ${EMOJI_IP}${BOLD} Enter Iran server IP:${NC} ) " IRAN_IP
-  read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter tunnel port [Default: 443]:${NC} ) " TUNNEL_PORT
-  TUNNEL_PORT=${TUNNEL_PORT:-443}
-  read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter WireGuard port [e.g. 51820]:${NC} ) " WG_PORT
+  IRAN_IP=$(ask_nonempty "${EMOJI_IP}${BOLD} Enter IRAN server IP (Client will connect from this IP):${NC} ")
+
+  while true; do
+    read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter tunnel port [Default: 443]:${NC} ) " TUNNEL_PORT
+    TUNNEL_PORT=${TUNNEL_PORT:-443}
+    [[ $TUNNEL_PORT =~ ^[0-9]+$ ]] && break
+    echo -e "${LRED}Please enter a valid port number!${NC}"
+  done
+
+  while true; do
+    read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter WireGuard port [e.g. 51820]:${NC} ) " WG_PORT
+    [[ $WG_PORT =~ ^[0-9]+$ ]] && break
+    echo -e "${LRED}Please enter a valid port number!${NC}"
+  done
+
   PT_CMD="$PINGTUNNEL_BIN -type s -l :$TUNNEL_PORT -r 127.0.0.1:$WG_PORT"
+  echo -e "${YELLOW}Service Command: $PT_CMD${NC}"
   create_service "$PT_CMD"
-  echo "$IRAN_IP" > /etc/pingtunnel_iran_ip
   echo -e "${LGREEN}${EMOJI_OK} KHAREJ tunnel is running!${NC}"
+
+  echo -e "${LCYAN}You should allow connection from IRAN server IP: ${LYELLOW}$IRAN_IP${NC}"
+  echo -e "${LCYAN}Testing ICMP (ping) to IRAN IP: $IRAN_IP ...${NC}"
+  ping -c 4 "$IRAN_IP"
+  echo -e "${LYELLOW}If you want to test TCP port, run: nc -zv $IRAN_IP $WG_PORT${NC}"
 }
 
 setup_iran_tunnel() {
-  read -p "$(echo -e ${EMOJI_IP}${BOLD} Enter KHAREJ server IP:${NC} ) " SERVER_IP
-  read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter tunnel port [Default: 443]:${NC} ) " TUNNEL_PORT
-  TUNNEL_PORT=${TUNNEL_PORT:-443}
-  read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter WireGuard port [e.g. 51820]:${NC} ) " WG_PORT
-  PT_CMD="$PINGTUNNEL_BIN -type c -l 127.0.0.1:$WG_PORT -s $SERVER_IP:$TUNNEL_PORT"
+  KHAREJ_IP=$(ask_nonempty "${EMOJI_IP}${BOLD} Enter KHAREJ server IP (Server's public IP):${NC} ")
+
+  while true; do
+    read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter tunnel port [Default: 443]:${NC} ) " TUNNEL_PORT
+    TUNNEL_PORT=${TUNNEL_PORT:-443}
+    [[ $TUNNEL_PORT =~ ^[0-9]+$ ]] && break
+    echo -e "${LRED}Please enter a valid port number!${NC}"
+  done
+
+  while true; do
+    read -p "$(echo -e ${EMOJI_PORT}${BOLD} Enter WireGuard port [e.g. 51820]:${NC} ) " WG_PORT
+    [[ $WG_PORT =~ ^[0-9]+$ ]] && break
+    echo -e "${LRED}Please enter a valid port number!${NC}"
+  done
+
+  PT_CMD="$PINGTUNNEL_BIN -type c -l 127.0.0.1:$WG_PORT -s $KHAREJ_IP:$TUNNEL_PORT"
+  echo -e "${YELLOW}Service Command: $PT_CMD${NC}"
   create_service "$PT_CMD"
   echo -e "${LGREEN}${EMOJI_OK} Iran tunnel is running!${NC}"
-}
 
-show_logs() {
-  echo -e "${LYELLOW}--- Last 30 lines of pingtunnel log ---${NC}"
-  journalctl -u pingtunnel -n 30 --no-pager
-  echo -e "${LYELLOW}---------------------------------------${NC}"
-  read -p "Press Enter to continue..."
-}
-
-test_connectivity() {
-  if [[ -f "$SVC_FILE" ]]; then
-    CMD=$(grep '^ExecStart=' "$SVC_FILE" | sed 's/ExecStart=//')
-    if echo "$CMD" | grep -q ' -type s '; then
-      # Server mode: ask for Iran IP and test
-      WG_PORT=$(echo "$CMD" | grep -o '\-r 127.0.0.1:[0-9]*' | awk -F: '{print $3}')
-      read -p "Enter Iran server IP to test: " TEST_IP
-      if [[ -n "$TEST_IP" && -n "$WG_PORT" ]]; then
-        echo -e "${LCYAN}Testing ICMP (ping) to $TEST_IP...${NC}"
-        ping -c 4 "$TEST_IP"
-        echo -e "${LCYAN}Testing TCP port $WG_PORT on $TEST_IP...${NC}"
-        nc -zv "$TEST_IP" "$WG_PORT"
-      else
-        echo -e "${LRED}IP or WireGuard port not provided.${NC}"
-      fi
-    elif echo "$CMD" | grep -q ' -type c '; then
-      # Client mode: ask for KHAREJ IP and test
-      WG_PORT=$(echo "$CMD" | grep -o '\-l 127.0.0.1:[0-9]*' | awk -F: '{print $3}')
-      read -p "Enter KHAREJ (outside) server IP to test: " TEST_IP
-      TUNNEL_PORT=$(echo "$CMD" | grep -o '\-s [^ ]*' | awk -F: '{print $2}')
-      if [[ -n "$TEST_IP" && -n "$TUNNEL_PORT" ]]; then
-        echo -e "${LCYAN}Testing ICMP (ping) to $TEST_IP...${NC}"
-        ping -c 4 "$TEST_IP"
-        echo -e "${LCYAN}Testing TCP port $TUNNEL_PORT on $TEST_IP...${NC}"
-        nc -zv "$TEST_IP" "$TUNNEL_PORT"
-      else
-        echo -e "${LRED}IP or tunnel port not provided.${NC}"
-      fi
-    else
-      echo -e "${LRED}Unknown pingtunnel mode in service config.${NC}"
-    fi
-  else
-    echo -e "${LRED}Service not configured.${NC}"
-  fi
-  read -p "Press Enter to continue..."
+  echo -e "${LCYAN}You are connecting to KHAREJ server IP: ${LYELLOW}$KHAREJ_IP${NC}"
+  echo -e "${LCYAN}Testing ICMP (ping) to KHAREJ IP: $KHAREJ_IP ...${NC}"
+  ping -c 4 "$KHAREJ_IP"
+  echo -e "${LYELLOW}If you want to test TCP port, run: nc -zv $KHAREJ_IP $TUNNEL_PORT${NC}"
 }
 
 tunnel_menu() {
@@ -293,8 +296,6 @@ tunnel_menu() {
     echo -e "${LGREEN}2) Create Iran Tunnel ${EMOJI_IRAN}${NC}"
     echo -e "${LRED}3) Remove Tunnel ${EMOJI_DELETE}${NC}"
     echo -e "${LCYAN}4) Restart Tunnel ${EMOJI_RESTART}${NC}"
-    echo -e "${LPURPLE}5) Show Tunnel Logs 📝${NC}"
-    echo -e "${LPURPLE}6) Test Connectivity 🔎${NC}"
     echo -e "${LPURPLE}0) Back ${EMOJI_BACK}${NC}"
     read -p "$(echo -e ${EMOJI_INPUT}${BOLD} Choose an option:${NC} ) " opt
     case $opt in
@@ -302,8 +303,6 @@ tunnel_menu() {
       2) setup_iran_tunnel ;;
       3) remove_service ;;
       4) restart_service ;;
-      5) show_logs ;;
-      6) test_connectivity ;;
       0) break ;;
       *) echo -e "${LRED}Invalid option.${NC}";;
     esac
@@ -349,15 +348,4 @@ while true; do
   clear
   show_logo
   show_status_cards
-  echo -e "${LBLUE}${BOLD}Main Menu${NC}"
-  echo -e "${LYELLOW}1) Core Manager ${EMOJI_CORE}${NC}"
-  echo -e "${LGREEN}2) Tunnel Manager ${EMOJI_TUNNEL}${NC}"
-  echo -e "${LRED}0) Exit ${EMOJI_CONFETTI}${NC}"
-  read -p "$(echo -e ${EMOJI_INPUT}${BOLD} Choose an option:${NC} ) " opt
-  case $opt in
-    1) core_menu ;;
-    2) tunnel_menu ;;
-    0) echo -e "${LGREEN}Goodbye!${NC}"; exit 0 ;;
-    *) echo -e "${LRED}Invalid option.${NC}"; sleep 1 ;;
-  esac
-done
+  echo -e "${LBLUE}${BOLD}Main Menu${NC
